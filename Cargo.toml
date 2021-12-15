@@ -22,6 +22,7 @@ members = [
 
 [dependencies]
 adw = { version = "0.1.0-alpha-6", optional = true, package = "libadwaita" }
+libpanel = { git = "https://gitlab.gnome.org/euclio/libpanel-rs.git", branch = "fm", optional = true }
 async-trait = { version = "0.1", optional = true }
 fragile = "1"
 futures-core = "0.3"
@@ -35,3 +36,21 @@ default = []
 libadwaita = ["adw"]
 tokio-rt = ["tokio", "async-trait"]
 all = ["tokio-rt", "libadwaita"]
+
+[patch."https://github.com/gtk-rs/gtk-rs-core"]
+gio = "0.14.8"
+gio-sys = "0.14.0"
+glib = "0.14.8"
+glib-sys = "0.14.0"
+gobject-sys = "0.14.0"
+gtk-sys = "0.14.0"
+
+[patch."https://github.com/gtk-rs/gtk4-rs"]
+gdk4 = "0.3.1"
+gtk4 = "0.3.1"
+gtk4-sys = "0.3.1"
+gdk4-sys = "0.3.1"
+
+[patch."https://gitlab.gnome.org/World/Rust/libadwaita-rs"]
+libadwaita = "0.1.0-beta-1"
+libadwaita-sys = "0.1.0-beta-1"
