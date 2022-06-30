@@ -2,55 +2,58 @@ use proc_macro2::TokenStream as TokenStream2;
 use quote::{quote, ToTokens};
 use syn::spanned::Spanned;
 use syn::{Error, PathArguments, Visibility};
+use syn::visit::Visit;
 
-use crate::macros::Macros;
-use crate::ItemImpl;
+use crate::menu::Menus;
+use crate::visitors::{ComponentMacros, ComponentTypes};
 
 mod funcs;
 pub(super) mod inject_view_code;
 pub(crate) mod token_streams;
-mod types;
 
 use inject_view_code::inject_view_code;
 
-pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenStream2 {
-    let last_segment = data
-        .trait_
-        .segments
-        .last()
-        .expect("Expected at least one segment in the trait path");
-    if PathArguments::None != last_segment.arguments {
-        return Error::new(
-            last_segment.arguments.span(),
-            "Expected no generic parameters",
-        )
-        .to_compile_error();
-    };
+pub(crate) fn generate_tokens(vis: Option<Visibility>, data: syn::ItemImpl) -> TokenStream2 {
+    let mut component_types = ComponentTypes::default();
+    component_types.visit_item_impl(&data);
+    let ComponentTypes { widget_type_item, other_type_items } = component_types;
+    let widgets_type = widget_type_item.map(|def| &def.ty);
 
-    let types::Types {
-        widgets: widgets_type,
-        other_types,
-    } = match types::Types::new(data.types) {
-        Ok(types) => types,
-        Err(err) => return err.to_compile_error(),
-    };
+    let trait_ = &data.trait_.as_ref().unwrap().1;
+    let ty = &data.self_ty;
+    let outer_attrs = &data.attrs;
 
-    let trait_ = data.trait_;
-    let ty = data.self_ty;
-    let outer_attrs = &data.outer_attrs;
+    let mut component_macros = ComponentMacros::default();
+    component_macros.visit_item_impl(&data);
 
-    let Macros {
+    if let Some((first, rest)) = component_macros.errors.split_first_mut() {
+        for err in rest {
+            first.combine(*err);
+        }
+
+        return first.into_compile_error();
+    }
+
+    let ComponentMacros {
         view_widgets,
         additional_fields,
-        menus,
-    } = match Macros::new(&data.macros, data.brace_span.unwrap()) {
-        Ok(macros) => macros,
-        Err(err) => return err.to_compile_error(),
-    };
+        menu,
+        ..
+    } = component_macros;
 
     // Generate menu tokens
-    let menus_stream = menus.map(|m| m.menus_stream());
+    let menus_stream = menu.map(|menu| {
+        menu.parse_body::<Menus>()
+            .map(|menus| menus.menus_stream())
+            .unwrap_or_else(|e| e.to_compile_error())
+    });
 
+    let funcs = data.items.iter().filter_map(|item| {
+        match item {
+            syn::ImplItem::Method(func) => Some(func.clone()),
+            _ => None,
+        }
+    }).collect::<Vec<_>>();
     let funcs::Funcs {
         init,
         pre_view,
@@ -58,7 +61,7 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenS
         unhandled_fns,
         root_name,
         model_name,
-    } = match funcs::Funcs::new(data.funcs) {
+    } = match funcs::Funcs::new(funcs) {
         Ok(macros) => macros,
         Err(err) => return err.to_compile_error(),
     };
@@ -78,8 +81,8 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenS
 
     let root_widget_type = view_widgets.root_type();
 
-    let impl_generics = data.impl_generics;
-    let where_clause = data.where_clause;
+    let impl_generics = &data.generics;
+    let where_clause = &data.generics.where_clause;
 
     // Extract identifiers from additional fields for struct initialization: "test: u8" => "test"
     let additional_fields_return_stream = if let Some(fields) = &additional_fields {
@@ -118,7 +121,7 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenS
 
     quote! {
         #[allow(dead_code)]
-        #outer_attrs
+        #(#outer_attrs)*
         #[derive(Debug)]
         #vis struct #widgets_type {
             #struct_fields
@@ -127,9 +130,9 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenS
 
         impl #impl_generics #trait_ for #ty #where_clause {
             type Root = #root_widget_type;
-            type Widgets = #widgets_type;
+            #widget_type_item
 
-            #(#other_types)*
+            #(#other_type_items)*
 
             fn init_root() -> Self::Root {
                 #init_root

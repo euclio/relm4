@@ -13,7 +13,7 @@ pub(super) struct Macros {
 }
 
 impl Macros {
-    pub fn new(macros: &[Macro], span: Span) -> Result<Self> {
+    pub fn new(macros: &[&Macro], span: Span) -> Result<Self> {
         let mut additional_fields = None;
         let mut view_widgets = None;
         let mut menus = None;

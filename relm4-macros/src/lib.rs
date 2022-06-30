@@ -12,6 +12,7 @@ mod item_impl;
 mod macros;
 mod menu;
 mod view;
+mod visitors;
 mod widgets;
 
 #[macro_use]
@@ -157,7 +158,7 @@ fn gtk_import() -> std::rc::Rc<syn::Path> {
 #[proc_macro_attribute]
 pub fn component(attributes: TokenStream, input: TokenStream) -> TokenStream {
     let Attrs { visibility } = parse_macro_input!(attributes as Attrs);
-    let data = parse_macro_input!(input as ItemImpl);
+    let data = parse_macro_input!(input as syn::ItemImpl);
 
     component::generate_tokens(visibility, data).into()
 }

@@ -40,11 +40,12 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: ItemImpl) -> TokenS
     let ty = data.self_ty;
     let outer_attrs = &data.outer_attrs;
 
+    let macros = data.macros.iter().collect::<Vec<_>>();
     let Macros {
         view_widgets,
         additional_fields,
         menus,
-    } = match Macros::new(&data.macros, data.brace_span.unwrap()) {
+    } = match Macros::new(&macros, data.brace_span.unwrap()) {
         Ok(macros) => macros,
         Err(err) => return err.to_compile_error(),
     };
