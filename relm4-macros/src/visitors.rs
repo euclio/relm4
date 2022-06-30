@@ -1,4 +1,4 @@
-use syn::{Ident, ImplItemType, Macro, visit::{self, Visit}};
+use syn::{Ident, ImplItemType, ImplItemMethod, Macro, visit::{self, Visit}};
 
 #[derive(Default)]
 pub struct ComponentTypes<'ast> {
@@ -50,5 +50,42 @@ impl<'ast> Visit<'ast> for ComponentMacros<'ast> {
         }
 
         visit::visit_impl_item_macro(self, mac);
+    }
+}
+
+#[derive(Default)]
+pub struct ComponentFunctions<'ast> {
+    pub init: Option<&'ast ImplItemMethod>,
+    pub pre_view: Option<&'ast ImplItemMethod>,
+    pub post_view: Option<&'ast ImplItemMethod>,
+    pub other_functions: Vec<&'ast ImplItemMethod>,
+    pub errors: Vec<syn::Error>,
+}
+
+impl<'ast> Visit<'ast> for ComponentFunctions<'ast> {
+    fn visit_impl_item_method(&mut self, func: &'ast ImplItemMethod) {
+        match &*func.sig.ident.to_string() {
+            "init" => {
+                if self.init.is_some() {
+                    self.errors.push(syn::Error::new_spanned(func, "duplicate init function"));
+                }
+                self.init = Some(func);
+            }
+            "pre_view" => {
+                if self.pre_view.is_some() {
+                    self.errors.push(syn::Error::new_spanned(func, "duplicate pre_view function"));
+                }
+                self.pre_view = Some(func);
+            }
+            "post_view" => {
+                if self.post_view.is_some() {
+                    self.errors.push(syn::Error::new_spanned(func, "duplicate post_view function"));
+                }
+                self.post_view = Some(func);
+            }
+            _ => self.other_functions.push(func),
+        }
+
+        visit::visit_impl_item_method(self, func);
     }
 }

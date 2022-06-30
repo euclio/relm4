@@ -5,7 +5,7 @@ use syn::{Error, PathArguments, Visibility};
 use syn::visit::Visit;
 
 use crate::menu::Menus;
-use crate::visitors::{ComponentMacros, ComponentTypes};
+use crate::visitors::{ComponentMacros, ComponentTypes, ComponentFunctions};
 
 mod funcs;
 pub(super) mod inject_view_code;
@@ -13,7 +13,7 @@ pub(crate) mod token_streams;
 
 use inject_view_code::inject_view_code;
 
-pub(crate) fn generate_tokens(vis: Option<Visibility>, data: syn::ItemImpl) -> TokenStream2 {
+pub(crate) fn generate_tokens(vis: Option<Visibility>, data: syn::ItemImpl) -> syn::Result<TokenStream2> {
     let mut component_types = ComponentTypes::default();
     component_types.visit_item_impl(&data);
     let ComponentTypes { widget_type_item, other_type_items } = component_types;
@@ -31,7 +31,7 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: syn::ItemImpl) -> T
             first.combine(*err);
         }
 
-        return first.into_compile_error();
+        return Err(*first);
     }
 
     let ComponentMacros {
@@ -48,23 +48,22 @@ pub(crate) fn generate_tokens(vis: Option<Visibility>, data: syn::ItemImpl) -> T
             .unwrap_or_else(|e| e.to_compile_error())
     });
 
-    let funcs = data.items.iter().filter_map(|item| {
-        match item {
-            syn::ImplItem::Method(func) => Some(func.clone()),
-            _ => None,
+    let mut component_functions = ComponentFunctions::default();
+    component_functions.visit_item_impl(&data);
+
+    if let Some((first, rest)) = component_functions.errors.split_first_mut() {
+        for err in rest {
+            first.combine(*err);
         }
-    }).collect::<Vec<_>>();
-    let funcs::Funcs {
-        init,
-        pre_view,
-        post_view,
-        unhandled_fns,
-        root_name,
-        model_name,
-    } = match funcs::Funcs::new(funcs) {
-        Ok(macros) => macros,
-        Err(err) => return err.to_compile_error(),
-    };
+
+        return first.into_compile_error();
+    }
+
+    let ComponentFunctions { init, pre_view, post_view, other_functions, .. } = component_functions;
+
+    let view_widgets = component_macros.view_widgets.parse::<ViewWidgets>()
+        .unwrap_or_else(|e| e.to_compile_error());
+
 
     let token_streams::TokenStreams {
         error,
